@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>項目追加・管理フォーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s cubic-bezier(0, 1, 0, 1);
+        }
+        .accordion-content.open {
+            max-height: 2000px;
+            transition: max-height 0.5s ease-in-out;
+        }
+        .rotate-icon {
+            transition: transform 0.3s ease;
+        }
+        .rotate-icon.open {
+            transform: rotate(180deg);
+        }
+        .item-chip {
+            animation: fadeInScale 0.2s ease-out forwards;
+            cursor: grab;
+            user-select: none;
+        }
+        .item-chip:active {
+            cursor: grabbing;
+        }
+        .drag-over {
+            border-color: #6366f1 !important;
+            background-color: #eef2ff !important;
+            transform: scale(1.05);
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-900">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center md:text-left flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-slate-800 font-mono">Item Manager Pro</h1>
+                <p class="text-slate-500 text-sm mt-1">ドラッグで順番変更・結合。プリセットからの一括挿入にも対応。</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- 左側：項目選択エリア (Recursive Accordion & Presets) -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- プリセットエリア -->
+                <div class="space-y-3">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">プリセット</h2>
+                    <div id="preset-container" class="grid grid-cols-1 gap-2">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+
+                <!-- アコーディオンエリア -->
+                <div class="space-y-3">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">項目を選択</h2>
+                    <div id="accordion-container" class="space-y-3">
+                        <!-- JSで再帰的に生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側：フォーム編集エリア -->
+            <div class="lg:col-span-8 space-y-4">
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 md:p-8">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <h2 class="text-lg font-bold text-slate-800">項目フォーム</h2>
+                        <button id="copy-btn" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-2xl transition-all shadow-lg shadow-indigo-200 active:scale-95 flex items-center justify-center gap-2 font-bold text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            <span>結果（値をコピー）</span>
+                        </button>
+                    </div>
+
+                    <p class="text-[10px] text-indigo-400 mb-2 font-bold uppercase tracking-wider">Tip: 他の項目の上にドラッグすると結合します</p>
+
+                    <!-- 項目チップのコンテナ -->
+                    <div id="form-container" class="min-h-[220px] p-4 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex flex-wrap gap-3 content-start mb-6 overflow-hidden">
+                        <!-- ここに項目が並びます -->
+                        <p id="placeholder-text" class="text-slate-400 text-sm italic m-auto select-none text-center">
+                            項目ボタンをクリックするか、<br class="md:hidden">直接入力して項目を追加してください
+                        </p>
+                    </div>
+
+                    <!-- 手動入力セクション -->
+                    <div class="flex gap-2">
+                        <input type="text" id="manual-input" placeholder="直接入力..." class="flex-1 px-5 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all text-sm shadow-sm">
+                        <button id="add-manual-btn" class="bg-slate-800 text-white px-8 py-4 rounded-2xl hover:bg-slate-900 transition-all font-bold active:scale-95 shadow-md">追加</button>
+                    </div>
+                </div>
+
+                <!-- リアルタイムプレビュー (Valueを表示) -->
+                <div class="bg-slate-900 rounded-3xl p-6 text-white shadow-2xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-pulse"></div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono text-xs">Copy Result Preview</span>
+                        </div>
+                        <span id="item-count" class="text-[10px] font-bold text-slate-500">0 items</span>
+                    </div>
+                    <div id="text-output" class="text-base font-mono break-all opacity-90 leading-relaxed min-h-[1.5em] selection:bg-indigo-500"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知トースト -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 opacity-0 transition-all duration-300 bg-indigo-900 text-white px-8 py-3 rounded-full shadow-2xl pointer-events-none z-50 flex items-center gap-2">
+        <svg class="w-4 h-4 text-indigo-300" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg>
+        <span>コピーしました！</span>
+    </div>
+
+    <script>
+        /**
+         * JSON形式のデータ（ネスト対応）
+         */
+        const menuData = {
+            "R-18":["nsfw:nsfw"],
+            "画面設定":{
+                "品質":[
+                    "最高の品質:best quality",
+                    "驚くべき品質:amazing quality",
+                    "悪い品質:bad quality",
+                    "粗悪な品質:worst quality",
+                    "とても美的:very aesthetic",
+                    "美的:aesthetic",
+                    "不快:displeasing",
+                    "とても不快:very displeasing",
+                ],
+                "画風":[
+                    "マンガ風:comic",
+                    "アニメ風:anime",
+                    "萌え絵風:moe cute anime",
+                    "リアル風:realistic",
+                    "線画アメコミ風:stan lee, marvel",
+                    "線画:lineart",
+                    "線なし:no lineart",
+                    "ギザギザ線:jaggy lines",
+                    "アウトライン:outline",
+                    "ベクタ風:vector trace",
+                    "お絵描き:oekaki",
+                    "手書き:tegaki",
+                ],
+                "画面効果":[
+                    "逆光:backlighting",
+                    "ブルーム効果:bloom",
+                    "ボケ:bokeh",
+                    "回折スパイク:diffraction spikes",
+                    "ドロップシャドウ:drop shadow",
+                    "強調線:emphasis lines",
+                    "レンズフレア:lens flare",
+                ],
+                "アングル":[
+                    "真正面、こちらを見る:facing viewer",
+                    "上から見下ろす:from above",
+                    "更に高い位置から:bird eye view",
+                    "後ろから、背中向き:from behind",
+                    "下から見上げる:from below",
+                    "横から:from side",
+                    "逆さま、逆立ち、上下逆転:upside-down",
+                    "人物の軸を斜めにする・カメラを傾ける:dutch angle",
+                    "抱き枕風:dakimakura",
+                    "後ろ姿:back",
+                    "強い斜めアングル:dutch angle",
+                ],
+            },
+            "人物":{
+                "人数":[
+                    "女の子:1girl",
+                    "一人:solo",
+                    "男の子:1boy",
+                ],
+            },
+            "顔・身体":{
+                "表情・感情":[
+                    "溢れる笑顔:Beaming",
+                    "微笑み:Smiling",
+                    "怒り:Anger",
+                    "怒りの表情:Angry",
+                    "不満げな顔:Frustrated",
+                    "哀しみ:Sadness",
+                    "号泣:Sobbing",
+                    "物憂げな表情:Melancholic",
+                    "楽しみ:Pleasure",
+                    "楽しんでいる顔:Cheerful",
+                    "恥ずかしい:embarrassed",
+                    "動揺:upset",
+                    "慌てた顔:flustered",
+                    "軽く閉じた目:half-closed eye",
+                    "幸せ:happy",
+                    "悪戯な微笑み:evil smile",
+                    "赤面:blush",
+                    "作り笑い:false smile",
+                    "悲しい笑顔:sad smile",
+                    "無表情:expressionless",
+                ],
+                "目":[
+                    "つり目:upturned eyes",
+                    "たれ目:tareme",
+                    "ジト目:jitome",
+                    "つぶらな目:round eyes",
+                    "大きな目:large eyes",
+                    "光る眼:glowing eyes",
+                    "黒い目:black sclera",
+                    "目がハート:heart-shaped pupils",
+                ],
+                "眉毛":[
+                    "困り眉:troubled eyebrows",
+                    "怒り眉:V shaped eyebrows",
+                    "太眉:thick eyebrows",
+                    "短めの眉:short eyebrows",
+                ],
+                "口":[
+                    "口を開ける:open mouth",
+                    "奥歯を見せるほど開ける:open mouth, molar",
+                    "口を閉じる:close mouth",
+                    "への字口:close mouth, :<",
+                    "歯を食いしばる:close mouth, clench teeth",
+                    "口を尖らせる・ふくれっ面:pout",
+                    "キス:kiss",
+                ],
+                "おっぱい":[
+                    "爆乳:huge breast",
+                    "巨乳:big breast",
+                    "普通のおっぱい:medium breast",
+                    "貧乳・ちっぱい:small breast",
+                    "無乳・つるペタ・まな板:flat breast",
+                    "谷間:cleavage",
+                    "横乳:side boob",
+                    "下乳:underboob",
+                    "服の下からポッチが見えるおっぱい:hide nipples",
+                ],
+                "乳輪": [
+                    "大きな乳輪:deep pink around nipples",
+                    "透け乳首:see through, nipple erection",
+                    "大きな乳輪:huge areola",
+                ],
+                "おしり":[
+                    "デカ尻:huge ass",
+                    "小尻:small hip",
+                    "お尻のエクボ・ヴィーナスのえくぼ:venus dimples",
+                    "ハミ尻（上部）:butt crack",
+                    "ハミ尻（下）:lower hip",
+                ],
+                "髪":[
+                    "とても長い髪:very long hair",
+                    "長い髪、ロングヘア:long hair",
+                    "普通の長さ:medium hair",
+                    "ショートヘア:short hair",
+                    "ボブカット:bob cut",
+                    "三つ編み:braid",
+                    "ポニーテール:ponytail",
+                    "ツインテール:twintails",
+                    "アホ毛:ahoge",
+                    "ウェーブヘア:wavy hair",
+                ],
+                "髪色":[
+                    "黒:black hair",
+                    "白:white hair",
+                    "茶:brown hair",
+                    "ブロンド:blond hair",
+                    "赤:red hair",
+                    "黄:yellow hair",
+                    "ピンク:pink hair",
+                ],
+                "ワキ毛":[
+                    "ワキ毛:armpit hair",
+                ],
+                "陰毛":[
+                    "陰毛:pubic hair",
+                    "濃い陰毛:huge pubic hair",
+                    "パイパン:shaved pussy",
+                ],
+                "脚":[
+                    "長い脚:long legs",
+                    "短い脚:short legs",
+                    "太い足:chunky legs",
+                ],
+                "体型":[
+                    "痩せ型:skinny",
+                    "小柄:petite",
+                    "幼児体型:infant body shape",
+                    "女性らしい曲線的な体型:curvy",
+                    "ぽっちゃり体型:plump",
+                    "デブ体型:fat",
+                    "引き締まった体・モデル体型:toned",
+                    "マッチョ、筋肉質な体型:muscular",
+                    "イカ腹:female child、flabby",
+                ],
+                "年齢":[
+                    "子供化:child",
+                    "ロリ:loli",
+                    "幼い年齢:female child",
+                    "小学校低学年:9 years old",
+                    "小学校高学年:12 years old",
+                    "中学生:14 years old",
+                    "高校生: 17 years old",
+                    "大学生: 20 years old",
+                    "熟女:mature female",
+                ],
+                "状態":[
+                    "妊娠:pregnant",
+                    "汗:sweat",
+                    "湯気:steam",
+                    "よだれ:drool",
+                    "光沢:shiny",
+                    "舌を出す:tongue out",
+                ],
+                "肌の色":[
+                    "白い肌・青白い肌:pale skin",
+                    "日焼けした肌:tan",
+                    "黒い肌:black skin",
+                    "漆黒の肌:dark skin",
+                ],
+            },
+            "衣服":{
+                "下着":[
+                    "下着:underwear",
+                    "ランジェリー:lingerie",
+                    "パンツ:pantie",
+                    "ブラジャー:bra",
+                    "コットン（綿）:cotton underwear",
+                    "シルク（絹）:silk underwear",
+                    "サテン:satin underwear",
+                    "レース:lace underwear",
+                    "おむつ・おしめ:diaper",
+                    "ふんどし:loincloth",
+                    "ニプレス:pasties",
+                ],
+                "上半身の服装":[
+                    "Tシャツ:t-shirt",
+                    "タンクトップ:tank top",
+                    "Yシャツ:business shirt",
+                    "スーツ:business suit",
+                    "パーカー:hoodie",
+                    "カーディガン:cardigan",
+                    "セーター:sweater",
+                    "コート:coat",
+                    "学生服:school uniform",
+                ],
+                "下半身の服装":[
+                    "スカート:skirt",
+                    "ミニスカート:mini skirt",
+                    "ロングスカート:long skirt",
+                    "ジーンズ:jeans",
+                    "ホット・パンツ:hot pants",
+                    "レギンス:leggings",
+                    "タイツ:tights",
+                    "スウェット:sweatpants",
+                    "オーバーオール:Overalls",
+                    "ガーターベルト:garter",
+                ],
+                "水着":[
+                    "スクール水着:school swimsuit",
+                    "ビキニ:bikini",
+                    "マイクロビキニ:micro bikini",
+                    "タンキニ:tank-top swimsuit",
+                    "ワンピース水着:one piece swimsuit",
+                    "ハイレグ:high leg one piece swimsuit",
+                ],
+                "コスプレ":[
+                    "童貞を殺すセーター:sweater, knit, sleeveless, cleavage, turtleneck",
+                    "メイド:maid",
+                    "セーラー服:school uniform, sailor suit",
+                    "ナース服:nurse",
+                    "警察・警官:police",
+                    "サンタ・サンタクロース:santa",
+                    "CA、スチュワーデス:flight attendant",
+                    "軍服:military uniform",
+                    "魔法少女:magical girl",
+                    "天使:angel girl",
+                    "悪魔:devil girl",
+                    "裸エプロン:naked apron",
+                    "チアガール:cheerleader",
+                    "チアガールのポンポン:pom pom",
+                    "ウェディングドレス:wedding dress",
+                ],
+                "衣装の状態":[
+                    "テカテカ:shiny",
+                    "レース:lace",
+                    "濡れた服:wet",
+                    "濡れ透け:wet clothes",
+                    "シースルー:see-through",
+                    "食い込み:wedgie",
+                    "服の透け1:translucent",
+                    "服の透け2:transparent",
+                    "フリル:frills",
+                    "緊縛:bondage",
+                    "バニー用のウサギ尻尾:rabbit tail",
+                    "アームキャノン:arm cannon",
+                    "マフラー:scarf",
+                    "滴る液体:dripping",
+                    "サイドスリット:side slit",
+                    "絶対領域:zettai ryouiki",
+                    "お腹が開いた衣装:stomach cutout",
+                    "横が開いた衣装:side cutout",
+                    "背中が開いた衣装:back cutout",
+                    "ハート型の谷間ホール:heart cutout",
+                    "レザー素材:leather",
+                    "肩ひもなし:strapless",
+                    "下乳:underboob",
+                    "ゴム素材:latex",
+                    "ファー:fur",
+                    "ローレグ:lowleg",
+                ],
+                "アクセサリー":[
+                    "ネクタイ:necktie",
+                    "髪飾り:hair ornament",
+                    "リボン:ribbon",
+                    "眼鏡:glasses",
+                    "ジュエリー:jewelry",
+                    "王冠:crown",
+                    "ティアラ:tiara",
+                    "グローブ:gloves",
+                    "チェーン:chain",
+                    "ネックレス:necklace",
+                    "口が隠れるマフラー:scarf over mouth",
+                    "口マスク:mouth mask",
+                    "ベルト:belt",
+                    "キャップ:cap",
+                    "ハット:hat",
+                    "シュシュ:scrunchie",
+                ],
+                "ケモノ":[
+                    "ケモノ:kemono",
+                ],
+                "その他の服装":[
+                    "スーツ:suit",
+                    "和服:kimono",
+                    "袴:hakama",
+                    "スポーツウェア:training wear",
+                    "学生服:school uniform",
+                ],
+            },
+            "ポーズ・目線・脱衣":{
+                "ポーズ":[
+                    "立ち :standing",
+                    "腕を組む :arms Crossed",
+                    "両手を腰に:hands on hips",
+                    "腕を広げる:spread arms",
+                    "胸を揉む:grope breasts",
+                    "膝立ち :kneeling",
+                    "正座 :seiza",
+                    "あぐら:indian style sitting",
+                    "横座り :side sitting",
+                    "しゃがむ:squatting",
+                    "M字開脚:squatting, spread legs, knees away",
+                    "四つん這い:all fours",
+                    "指を組む :interlocking fingers",
+                    "手を振る :waving hand",
+                    "ピースサイン:peace sign",
+                    "猫の手・ニャンポーズ:paw pose",
+                    "ガオポーズ:claw pose",
+                    "うつ伏せ:lie on stomach",
+                    "仰向け :lie on back",
+                    "腋見せ:armpit",
+                    "まんぐり返し:lie on back, legs up high, spread legs, hold knees, vagina",
+                    "脚を開く:spread legs",
+                    "お尻を突き出す:stick out ass",
+                    "スカートたくしあげ1:skirt lift",
+                    "スカートたくしあげ2:skirt hold",
+                    "シャツ上げ:shirt lift",
+                    "座る:sitting",
+                    "歩く:walking",
+                    "膝立ち:kneeling",
+                    "ブラ見せ:bra lift",
+                    "手を後ろに隠す:arms behind back",
+                    "足を広げる:spread legs",
+                    "しゃがむ:squatting",
+                    "体育座り:sitting, knees up",
+                    "寝る:sleeping",
+                    "ジッパー開き:partially unzipped",
+                    "床に手をつける:hands on floor",
+                    "女の子座り:wariza",
+                    "胸に手を乗せる:hands on own chest",
+                ],
+                "目線":[
+                    "正面を向く:facing viewer",
+                    "振り向く:looking back",
+                    "目線を外す:looking at another",
+                    "上目遣い:upturned eyes",
+                    "見つめる:gaze",
+                ],
+                "脱衣":[
+                    "着替え:undressing",
+                    "上半身を脱ぐ:changing bra",
+                    "下半身を脱ぐ:changing pantie",
+                    "上半身裸:topless",
+                    "下半身裸:bottomless",
+                    "片足パンツ:bottomless, panties around one leg",
+                ],
+            },
+            "背景":{
+                "ベース":[
+                    "室内:indoor",
+                    "室外:outdoor",
+                ],
+                "学校":[
+                    "学校:school",
+                    "教室:classroom",
+                    "体育館:school gym",
+                    "グラウンド:school ground",
+                    "学食:cafeteria",
+                    "更衣室:changing room",
+                    "ロッカールーム:locker room",
+                    "屋上:rooftop",
+                    "プール:pool",
+                    "ビーチ:beach",
+                    "温泉:onsen",
+                    "お風呂:bath room",
+                    "シャワー:shower",
+                    "プールサイド:poolside",
+                ],
+                "部屋":[
+                    "リビング:livingroom",
+                    "ダイニング:dining room",
+                    "台所:kitchen",
+                    "トイレ:toilet",
+                    "自室:private room",
+                    "和室:japanese room",
+                ],
+                "外":[
+                    "繁華街:downtown",
+                    "公園:park",
+                    "カフェ:cafe",
+                    "スポーツジム:gym",
+                    "遊園地:amusement park",
+                    "水族館:aquarium",
+                    "会社・オフィス:office",
+                    "病院:hospital",
+                    "カラオケ:karaok",
+                    "バー:bar",
+                    "クラブ:night club",
+                    "電車内:in train",
+                    "駅:station",
+                    "ホテル:hotel",
+                    "神社:shrine",
+                    "城:castle",
+                    "階段:stairs",
+                    "ステージ:stage",
+                    "コンサート:concert",
+                    "ビーチ:beach",
+                ],
+                "その他":[
+                    "白一色の背景:white simple background",
+                ],
+            },
+            "性行為":{
+                "前戯":[
+                    "手コキ:handjob",
+                    "フェラチオ・フェラ:fellatio",
+                    "舌先フェラ:lick penis with tongue",
+                    "亀頭攻め:fellatio, lick glans, peck",
+                    "裏筋舐め:lick up urasuji",
+                    "イラマチオ:irrumatio",
+                    "バキュームフェラ:deep throat, :>=",
+                    "ローリングフェラ:intertwine tongue with penis, tilt your head",
+                    "パイズリ:paizuri",
+                    "足コキ:footjob",
+                    "クンニ:cunnilingus, lick vagina",
+                    "顔面騎乗位:cunnilingus, lick vagina, girl sit on man’s face",
+                    "まんぐり返しクンニ:cunnilingus ,lick vagina, girl up side down",
+                ],
+                "オナニー":[
+                    "オナニー:masturbation",
+                    "おもちゃ自慰:masturbation, sex toy",
+                ],
+                "プレイ":[
+                    "緊縛:restrained",
+                    "SM:butterfly mask, whip, black bondage",
+                    "触手:tentacles",
+                    "男の娘・ふたなり:otokonoko, girl with penis",
+                    "スパンキング:spanking",
+                    "催眠:under hypnosis",
+                    "時間停止:empty eyes",
+                    "百合・ゆり:2girls, yuri",
+                    "キメセク:heart-shaped pupils, orgasm",
+                    "母乳・搾乳プレイ:breast milk",
+                    "うんこ・大便:poop",
+                    "おしっこ・小便:peeing",
+                ],
+                "本番":[
+                    "正常位:sex, vagina, girl lying on the bed",
+                    "騎乗位:sex, woman on top",
+                    "後背位（バック）:sex, back",
+                    "立ちバック:standing doggy",
+                    "背面騎乗位:sex, woman on top, from behind",
+                    "座位:sex, man under girl, man hug girl",
+                    "駅弁:sex, standing, man hug girl’s knees, man hold girl",
+                    "中出し:sex, cum from pussy",
+                    "アナルセックス:ana; sex",
+                    "断面図:sex, x-ray, belly ,womb",
+                ],
+                "乱交":[
+                    "乱交(2人):sex, gangbang, 2boys",
+                    "乱交(3人):sex, gangbang, 3boys",
+                    "乱交(4人):sex, gangbang, 4boys",
+                    "乱交(5人):sex, gangbang, 5boys",
+                ],
+                "精液":[
+                    "ぶっかけ:bukkake",
+                    "顔射:cum on face",
+                    "髪射:cum in hair",
+                    "胸射:cum on breasts",
+                    "尻射:cum on hip、from back",
+                    "脚射:cum on legs",
+                    "睾丸マッサージ:catch testicles",
+                ],
+                "潮吹き・射精":[
+                    "絶頂:orgasm",
+                    "女性の潮吹き:female ejaculation",
+                    "男の射精:ejaculation",
+                ],
+            },
+        };
+
+        /**
+         * プリセットJSONデータ
+         */
+        const presetData = {
+            "基本プリセット": ["{nsfw}:{{nsfw}}","{最高の品質}:{best quality}","{アニメ風}:{anime}","{{手書き,ギザギザ線}}:{{{{{{tegaki,jaggy lines}}}}}}","高品質,high quality","傑作:masterpiece","詳細な:detailed","高解像度:high resolution",],
+            "トロ顔":["絶頂:orgasm","よだれ:drool","湯気:steam","汗:sweat","舌を出す:tongue out",]
+        };
+
+        // 選択された項目の状態管理
+        // { id: number, labels: string[], values: string[], level: number }
+        let selectedItems = [];
+        let draggedItemId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const accordionContainer = document.getElementById('accordion-container');
+            const presetContainer = document.getElementById('preset-container');
+            
+            renderAccordionRecursive(menuData, accordionContainer);
+            renderPresets(presetData, presetContainer);
+            setupEventListeners();
+        });
+
+        /**
+         * プリセットボタンの生成
+         */
+        function renderPresets(presets, container) {
+            Object.entries(presets).forEach(([name, items]) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-left hover:bg-indigo-50 transition-all shadow-sm flex items-center justify-between group';
+                btn.innerHTML = `
+                    <span class="text-sm font-bold text-indigo-700">${name}</span>
+                    <span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity uppercase font-bold">Apply</span>
+                `;
+                btn.onclick = () => applyPreset(items);
+                container.appendChild(btn);
+            });
+        }
+
+        /**
+         * プリセットの適用
+         */
+        function applyPreset(presetItems) {
+            presetItems.forEach(itemStr => {
+                // 最後のコロンで分割
+                const lastColonIndex = itemStr.lastIndexOf(':');
+                if (lastColonIndex === -1) return;
+
+                const rawLabelPart = itemStr.substring(0, lastColonIndex);
+                const rawValuePart = itemStr.substring(lastColonIndex + 1);
+
+                // 強調レベルをカウント（ラベル側で判定）
+                let level = 0;
+                let cleanLabel = rawLabelPart;
+                let cleanValue = rawValuePart;
+
+                while (cleanLabel.startsWith('{') && cleanLabel.endsWith('}')) {
+                    level++;
+                    cleanLabel = cleanLabel.substring(1, cleanLabel.length - 1);
+                    cleanValue = cleanValue.substring(1, cleanValue.length - 1);
+                }
+
+                // 結合のパース（カンマ区切り）
+                const labels = cleanLabel.split(',').map(s => s.trim());
+                const values = cleanValue.split(',').map(s => s.trim());
+
+                // すべてのvalueがすでに存在するかチェック（部分一致ではなく完全一致。結合された値全体でチェック）
+                const exists = selectedItems.some(item =>
+                    item.values.length === values.length &&
+                    item.values.every((v, i) => v === values[i])
+                );
+
+                if (!exists) {
+                    selectedItems.push({
+                        id: Math.floor(Date.now() + Math.random() * 1000),
+                        labels: labels,
+                        values: values,
+                        level: level
+                    });
+                }
+            });
+            renderChips();
+        }
+
+        /**
+         * 再帰的にアコーディオンメニューを生成
+         */
+        function renderAccordionRecursive(data, container, depth = 0) {
+            Object.entries(data).forEach(([title, value]) => {
+                const section = document.createElement('div');
+                section.className = `border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-sm transition-all ${depth > 0 ? 'ml-4 mt-2' : ''}`;
+
+                const header = document.createElement('button');
+                header.className = 'w-full px-5 py-4 flex justify-between items-center hover:bg-slate-50 transition-colors text-left';
+                header.innerHTML = `
+                    <span class="${depth === 0 ? 'font-bold' : 'font-medium'} text-slate-700">${title}</span>
+                    <svg class="rotate-icon w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                `;
+
+                const content = document.createElement('div');
+                content.className = 'accordion-content px-4 py-0 bg-slate-50';
+
+                if (Array.isArray(value)) {
+                    const innerWrapper = document.createElement('div');
+                    innerWrapper.className = 'flex flex-wrap gap-2 py-3';
+                    value.forEach(itemStr => {
+                        const [label, val] = itemStr.split(':');
+                        const btn = document.createElement('button');
+                        btn.className = 'text-xs font-bold bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 px-3 py-2 rounded-xl transition-all shadow-sm active:scale-95';
+                        btn.textContent = label;
+                        btn.onclick = () => addItem(label, val);
+                        innerWrapper.appendChild(btn);
+                    });
+                    content.appendChild(innerWrapper);
+                } else if (typeof value === 'object') {
+                    renderAccordionRecursive(value, content, depth + 1);
+                }
+
+                header.onclick = (e) => {
+                    e.stopPropagation();
+                    const isOpen = content.classList.toggle('open');
+                    header.querySelector('.rotate-icon').classList.toggle('open');
+                    content.style.paddingBottom = isOpen ? '12px' : '0px';
+                };
+
+                section.appendChild(header);
+                section.appendChild(content);
+                container.appendChild(section);
+            });
+        }
+
+        /**
+         * フォームへの項目追加
+         */
+        function addItem(label, value) {
+            if (!value) return;
+            if (selectedItems.some(item => item.values.includes(value))) return;
+
+            selectedItems.push({
+                id: Math.floor(Date.now() + Math.random() * 1000),
+                labels: [label],
+                values: [value],
+                level: 0
+            });
+            renderChips();
+        }
+
+        /**
+         * テキスト整形
+         */
+        function formatItemText(item, mode) {
+            let base = mode === 'label' ? item.labels.join(', ') : item.values.join(', ');
+            for (let i = 0; i < item.level; i++) {
+                base = `{${base}}`;
+            }
+            return base;
+        }
+
+        /**
+         * フォーム内チップの描画
+         */
+        function renderChips() {
+            const container = document.getElementById('form-container');
+            const placeholder = document.getElementById('placeholder-text');
+            container.innerHTML = '';
+
+            if (selectedItems.length === 0) {
+                container.appendChild(placeholder);
+                updateOutput();
+                return;
+            }
+
+            selectedItems.forEach((item) => {
+                const chip = document.createElement('div');
+                chip.className = 'item-chip flex flex-col sm:flex-row items-center bg-white border border-slate-300 rounded-2xl shadow-sm hover:shadow-md transition-all overflow-hidden relative';
+                chip.setAttribute('draggable', 'true');
+                chip.dataset.id = item.id;
+
+                chip.ondragstart = (e) => {
+                    draggedItemId = item.id;
+                    e.dataTransfer.setData('text/plain', item.id);
+                    chip.style.opacity = '0.5';
+                };
+                chip.ondragend = () => {
+                    chip.style.opacity = '1';
+                    document.querySelectorAll('.item-chip').forEach(c => c.classList.remove('drag-over'));
+                };
+                chip.ondragover = (e) => {
+                    e.preventDefault();
+                    if (draggedItemId !== item.id) {
+                        chip.classList.add('drag-over');
+                    }
+                };
+                chip.ondragleave = () => chip.classList.remove('drag-over');
+                chip.ondrop = (e) => {
+                    e.preventDefault();
+                    handleDrop(item.id);
+                };
+
+                const displayLabel = formatItemText(item, 'label');
+
+                chip.innerHTML = `
+                    <div class="px-4 py-2 font-bold text-slate-700 bg-slate-50 self-stretch flex items-center justify-center border-b sm:border-b-0 sm:border-r border-slate-200 min-w-[60px]">
+                        ${displayLabel}
+                    </div>
+                    <div class="flex items-center gap-0.5 p-1.5 bg-white">
+                        <button onclick="changeHighlight(${item.id}, 1, event)" class="w-8 h-8 flex items-center justify-center rounded-lg text-amber-500 hover:bg-amber-50 transition-colors font-bold text-sm" title="強調+">+{</button>
+                        ${item.level > 0 ? `
+                        <button onclick="changeHighlight(${item.id}, -1, event)" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors font-bold text-sm" title="強調-">}-{</button>
+                        ` : ''}
+                        <div class="w-px h-4 bg-slate-200 mx-0.5"></div>
+                        <button onclick="removeItem(${item.id}, event)" class="w-8 h-8 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 transition-colors text-lg" title="削除">×</button>
+                    </div>
+                `;
+                container.appendChild(chip);
+            });
+
+            updateOutput();
+        }
+
+        function handleDrop(targetId) {
+            if (draggedItemId === null || draggedItemId === targetId) return;
+            const draggedIdx = selectedItems.findIndex(i => i.id === draggedItemId);
+            const [draggedItem] = selectedItems.splice(draggedIdx, 1);
+            const targetItem = selectedItems.find(i => i.id === targetId);
+            
+            targetItem.labels.push(...draggedItem.labels);
+            targetItem.values.push(...draggedItem.values);
+
+            draggedItemId = null;
+            renderChips();
+        }
+
+        window.changeHighlight = (id, delta, e) => {
+            e.stopPropagation();
+            const item = selectedItems.find(i => i.id === id);
+            if (item) {
+                item.level = Math.max(0, item.level + delta);
+                renderChips();
+            }
+        };
+
+        window.removeItem = (id, e) => {
+            e.stopPropagation();
+            selectedItems = selectedItems.filter(i => i.id !== id);
+            renderChips();
+        };
+
+        function updateOutput() {
+            const output = document.getElementById('text-output');
+            const countDisplay = document.getElementById('item-count');
+            const formattedList = selectedItems.map(item => formatItemText(item, 'value'));
+            output.textContent = formattedList.join(', ');
+            countDisplay.textContent = `${selectedItems.length} items`;
+        }
+
+        function setupEventListeners() {
+            const addManual = () => {
+                const input = document.getElementById('manual-input');
+                const val = input.value.trim();
+                if (val) {
+                    addItem(val, val);
+                    input.value = '';
+                }
+            };
+            document.getElementById('add-manual-btn').onclick = addManual;
+            document.getElementById('manual-input').onkeypress = (e) => { if (e.key === 'Enter') addManual(); };
+
+            document.getElementById('copy-btn').onclick = () => {
+                const text = document.getElementById('text-output').textContent;
+                if (!text) return;
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast();
+                } catch (err) { console.error(err); }
+                document.body.removeChild(textarea);
+            };
+
+            const container = document.getElementById('form-container');
+            container.ondragover = (e) => e.preventDefault();
+            container.ondrop = (e) => {
+                if (e.target === container) {
+                    const id = parseInt(e.dataTransfer.getData('text/plain'));
+                    const idx = selectedItems.findIndex(i => i.id === id);
+                    if (idx !== -1) {
+                        const [item] = selectedItems.splice(idx, 1);
+                        selectedItems.push(item);
+                        renderChips();
+                    }
+                }
+            };
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.style.opacity = '1';
+            toast.style.bottom = '40px';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.bottom = '32px';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
